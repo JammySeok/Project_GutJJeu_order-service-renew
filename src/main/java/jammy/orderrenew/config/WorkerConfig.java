@@ -8,7 +8,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 /*
  * 스케쥴러(Worker) 설정
  * - 대기열 시스템
- * -
  */
 @Configuration
 @RequiredArgsConstructor

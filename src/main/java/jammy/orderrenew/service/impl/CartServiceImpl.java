@@ -1,5 +1,6 @@
 package jammy.orderrenew.service.impl;
 
+import feign.FeignException;
 import jammy.orderrenew.client.ProductClient;
 import jammy.orderrenew.exception.CartNotFoundException;
 import jammy.orderrenew.exception.ErrorCode;

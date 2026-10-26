@@ -33,8 +33,11 @@ public class OrderController {
     ) {
 
         // 해더의 Key가 "X-USERS-IDX"인 Value 가져오기
-        String headerValue = servletRequest.getHeader("X-USERS-IDX");
-        Long userIdx = (headerValue != null) ? Long.parseLong(headerValue) : null;
+//        String headerValue = servletRequest.getHeader("X-USERS-IDX");
+//        Long userIdx = (headerValue != null) ? Long.parseLong(headerValue) : null;
+
+        // 테스트용 유저
+        Long userIdx = 1L;
 
         // 주문 생성
         OrderRes info = orderService.createOrder(userIdx, request);
@@ -58,8 +61,11 @@ public class OrderController {
     ) {
 
         // 해더의 Key가 "X-USERS-IDX"인 Value 가져오기
-        String headerValue = servletRequest.getHeader("X-USERS-IDX");
-        Long userIdx = (headerValue != null) ? Long.parseLong(headerValue) : null;
+//        String headerValue = servletRequest.getHeader("X-USERS-IDX");
+//        Long userIdx = (headerValue != null) ? Long.parseLong(headerValue) : null;
+
+        // 테스트용 유저
+        Long userIdx = 1L;
 
         // 상품 리스트 조회
         Page<OrderRes> info = orderService.findOrderList(userIdx, pageable);

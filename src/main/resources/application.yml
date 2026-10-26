@@ -1,4 +1,3 @@
-
 spring:
 
   application:
@@ -10,13 +9,21 @@ spring:
     password:
     driver-class-name: org.h2.Driver
 
+#  datasource:
+#    url: jdbc:mariadb://localhost:3306/order_lt
+#    username: root
+#    password: root
+#    driver-class-name: org.mariadb.jdbc.Driver
+#    hikari:
+#      maximum-pool-size: 20          # 비관적 락과 Lua 비교 시 동일하게 고정
+
   jpa:
     hibernate:
-      ddl-auto: create-drop
-    show-sql: true
+      ddl-auto: create               # 기동할 때마다 테이블 새로 생성 (테스트용)
+    show-sql: false
     properties:
       hibernate:
-        format_sql: true
+        format_sql: false
 
   kafka:
     bootstrap-servers: localhost:9092
@@ -24,43 +31,29 @@ spring:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
 
-eureka:
-  client:
-    register-with-eureka: true
-    fetch-registry: true
-    service-url:
-      defaultZone: http://localhost:8761/eureka/
-
   instance:
     prefer-ip-address: true
     instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
 
+  profiles:
+    active: loadtest
+
 logging:
   pattern:
-    # 콘솔 출력 포맷: 시간, 로그 레벨(색상), 로거 이름, 메시지 순
     console: "%d{yyyy-MM-dd HH:mm:ss} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr(%-40.40logger{39}){cyan} : %m%n"
-
   level:
-    # 1. 전체 기본 레벨 (너무 시끄럽지 않게 INFO로 설정)
     root: INFO
+    co.kr.order: INFO
 
-    # 2. 내 프로젝트 패키지 (가장 중요: 직접 작성한 코드의 로그 보기)
-    co.kr.order: DEBUG
-
-    # 3. Spring Web (Controller로 들어오는 HTTP 요청/응답 경로 확인)
-    org.springframework.web: DEBUG
-
-    # 5. DB 쿼리 및 파라미터 바인딩 확인
-    org.hibernate.SQL: DEBUG                 # 실행되는 쿼리 문장 출력
-    org.hibernate.orm.jdbc.bind: TRACE       # 쿼리의 ? 에 들어가는 값 출력 (기존 설정 유지)
-
-    # 6. 트랜잭션 관리 확인 (롤백 등의 이슈 디버깅용)
-    org.springframework.transaction: DEBUG
 
 custom:
+
   data:
     redis:
       host: localhost
       port: 6379
 
+  # 테스트용
+  stock:
+    strategy: redis      # redis | db-lock
 

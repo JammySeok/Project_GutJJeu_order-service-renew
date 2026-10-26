@@ -1,7 +1,7 @@
 package jammy.orderrenew.model.dto.response;
 
-import co.kr.order.model.vo.PaymentStatus;
-import co.kr.order.model.vo.PaymentType;
+import jammy.orderrenew.model.vo.PaymentStatus;
+import jammy.orderrenew.model.vo.PaymentType;
 
 import java.math.BigDecimal;
 

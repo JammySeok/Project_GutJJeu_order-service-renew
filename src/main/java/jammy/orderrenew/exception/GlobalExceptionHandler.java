@@ -1,6 +1,6 @@
 package jammy.orderrenew.exception;
 
-import co.kr.order.model.dto.response.BaseResponse;
+import jammy.orderrenew.model.dto.response.BaseResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;

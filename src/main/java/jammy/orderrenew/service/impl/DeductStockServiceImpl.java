@@ -3,9 +3,12 @@ package jammy.orderrenew.service.impl;
 import jakarta.annotation.PostConstruct;
 import jammy.orderrenew.exception.ErrorCode;
 import jammy.orderrenew.exception.OutOfStockException;
+import jammy.orderrenew.model.dto.ProductInfo;
+import jammy.orderrenew.model.dto.RemainStockInfo;
 import jammy.orderrenew.service.DeductStockService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
@@ -18,6 +21,7 @@ import java.util.List;
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "custom.stock.strategy", havingValue = "redis", matchIfMissing = true)
 public class DeductStockServiceImpl implements DeductStockService {
 
     private final StringRedisTemplate redisTemplate;
@@ -134,8 +138,6 @@ public class DeductStockServiceImpl implements DeductStockService {
 
                     throw new OutOfStockException(ErrorCode.OUT_OF_STOCK);
                 }
-
-                log.info("Redis 재고 차감 성공. Key: {}, 남은재고: {}", key, stock);
 
                 // 성공한 상품 재고 세팅
                 success.add(item);

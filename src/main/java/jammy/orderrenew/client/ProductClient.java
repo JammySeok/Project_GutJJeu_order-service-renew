@@ -2,6 +2,7 @@ package jammy.orderrenew.client;
 
 import jammy.orderrenew.model.dto.request.ClientProductReq;
 import jammy.orderrenew.model.dto.response.ClientProductRes;
+import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -11,7 +12,9 @@ import java.util.Map;
  * FeignClient
  * Product-Service에 API 요청
  */
-@FeignClient(name = "product-service", path = "/client/products")
+@FeignClient(name = "product-service", path = "/client/products",
+        primary = false  // Test용 추가
+)
 public interface ProductClient {
 
     /*

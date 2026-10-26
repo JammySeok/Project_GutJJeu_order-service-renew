@@ -1,6 +1,6 @@
 package jammy.orderrenew.model.dto.response;
 
-import co.kr.order.model.dto.ItemInfo;
+import jammy.orderrenew.model.dto.ItemInfo;
 
 import java.math.BigDecimal;
 

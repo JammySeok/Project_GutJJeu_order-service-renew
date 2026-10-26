@@ -6,6 +6,8 @@ import jammy.orderrenew.exception.OrderNotFoundException;
 import jammy.orderrenew.model.dto.ItemInfo;
 import jammy.orderrenew.model.dto.ProductInfo;
 import jammy.orderrenew.model.dto.UserInfo;
+import jammy.orderrenew.model.dto.event.StockUpdateEvent;
+import jammy.orderrenew.model.dto.event.StockUpdateMsg;
 import jammy.orderrenew.model.dto.request.ClientProductReq;
 import jammy.orderrenew.model.dto.request.OrderReq;
 import jammy.orderrenew.model.dto.response.ClientProductRes;
@@ -134,7 +136,12 @@ public class OrderServiceImpl implements OrderService {
         }
 
         // Redis 재고 선차감
-        deductStockService.decreaseStocks(stocksInfos);
+        if (request.orderType() == OrderType.DIRECT) {
+            ProductInfo p = stocksInfos.getFirst();
+            deductStockService.decreaseStock(p.optionCode(), p.quantity());
+        } else {
+            deductStockService.decreaseStocks(stocksInfos);
+        }
 
         // 총 주문 금액 계산
         BigDecimal totalAmount = tempOrderItems.stream()
@@ -224,6 +231,7 @@ public class OrderServiceImpl implements OrderService {
         // 상태 변경
         orderEntity.setUserData(userInfo);
         orderEntity.setStatus(OrderStatus.PAID);
+        orderRepository.saveAndFlush(orderEntity);
 
         // 주문 상품 리스트 조회 (재고 이벤트를 위해 필요)
         List<OrderItemEntity> itemEntities = orderItemRepository.findAllByOrder(orderEntity);
@@ -231,15 +239,15 @@ public class OrderServiceImpl implements OrderService {
         processSettlement(orderCode, paymentIdx, itemEntities);
 
         // Kafka 이벤트 발행 (Product Service DB 재고 차감용)
-//        for (OrderItemEntity item : itemEntities) {
-//            StockUpdateMsg msg = new StockUpdateMsg(
-//                    UUID.randomUUID().toString(),
-//                    item.getProductCode(),
-//                    item.getOptionCode(),
-//                    (long) item.getQuantity()
-//            );
-//            eventPublisher.publishEvent(new StockUpdateEvent(msg));
-//        }
+        for (OrderItemEntity item : itemEntities) {
+            StockUpdateMsg msg = new StockUpdateMsg(
+                    UUID.randomUUID().toString(),
+                    item.getProductCode(),
+                    item.getOptionCode(),
+                    (long) item.getQuantity()
+            );
+            eventPublisher.publishEvent(new StockUpdateEvent(msg));
+        }
     }
 
     /*
@@ -285,7 +293,7 @@ public class OrderServiceImpl implements OrderService {
             redisTemplate.opsForValue().set(key, jsonValue, 30, TimeUnit.MINUTES);
             log.info("Redis 정산 정보 저장 완료: {}", orderCode);
 
-        } catch (JsonProcessingException e) {
+        } catch (Exception e) {
             log.error("정산 정보 Redis 직렬화 실패: {}", orderCode, e);
         }
     }
@@ -298,22 +306,59 @@ public class OrderServiceImpl implements OrderService {
         try {
             Object redisValue = redisTemplate.opsForValue().get(key);
             if (redisValue != null) {
-                log.info("redis 정산금 조회");
+                log.info("************레디스 정산금 조회 전************");
                 String jsonStr = String.valueOf(redisValue);
                 settlementMap = objectMapper.readValue(jsonStr, new TypeReference<Map<Long, BigDecimal>>() {});
-                log.info("redis 정산금 조회성공 : " + settlementMap);
+                log.info("************레디스 정산금 조회 완료: {}************", settlementMap);
             }
         } catch (Exception e) {
-            log.info("정산금 조회중 터짐");
-            throw new RuntimeException("정산금 조회중 터졌어요");
+            log.info("Redis 정산 정보 조회/파싱 실패: {}", orderCode, e);
+            throw new RuntimeException("정산 정보 조회 실패");
+        }
+
+        // Redis에 없으면 DB/Feign으로 재계산 (Fallback)
+        if (settlementMap == null || settlementMap.isEmpty()) {
+            log.info("정산 정보 재계산 수행: {}", orderCode);
+            settlementMap = recalculateSettlementMap(items);
         }
 
         // 정산 서비스 호출
         if (!settlementMap.isEmpty()) {
+            log.info("************정산금 생성 메서드 진입************");
             settlementService.createSettlement(paymentIdx, settlementMap);
             // 처리 후 Redis 키 삭제
             redisTemplate.delete(key);
+            log.info("************정산금 redis 삭제 완료************");
         }
+    }
+
+    // Fallback: 상품 서비스를 통해 sellerIdx를 다시 조회하여 정산금 계산
+    private Map<Long, BigDecimal> recalculateSettlementMap(List<OrderItemEntity> items) {
+        Map<Long, BigDecimal> map = new HashMap<>();
+
+        // 주문 상품들의 코드로 최신 상품 정보(SellerIdx 포함) 조회
+        List<ClientProductReq> reqList = items.stream()
+                .map(item -> new ClientProductReq(item.getProductCode(), item.getOptionCode()))
+                .collect(Collectors.toList());
+
+        // Product Service 호출 (Bulk)
+        List<ClientProductRes> productInfos = productClient.getProductList(reqList);
+
+        // 정산금 합산
+        for (ClientProductRes p : productInfos) {
+            // 해당 옵션 코드의 주문 수량 찾기
+            int quantity = items.stream()
+                    .filter(i -> i.getOptionCode().equals(p.optionCode()))
+                    .mapToInt(OrderItemEntity::getQuantity)
+                    .sum();
+
+            if (quantity > 0) {
+                // 가격 * 수량
+                BigDecimal amount = p.price().multiply(BigDecimal.valueOf(quantity));
+                map.merge(p.sellerIdx(), amount, BigDecimal::add);
+            }
+        }
+        return map;
     }
 
     /*
@@ -510,4 +555,11 @@ public class OrderServiceImpl implements OrderService {
         return order.getId();
     }
 
+
+    public Long findOrderItemIdxByProduct(String productsCode){
+
+        OrderItemEntity orderItem = orderItemRepository.findByProductCode(productsCode)
+                .orElseThrow(() -> new OrderNotFoundException(ErrorCode.ORDER_NOT_FOUND));
+        return orderItem.getId();
+    }
 }

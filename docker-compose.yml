@@ -1,0 +1,10 @@
+services:
+  mariadb:
+    image: mariadb:11
+    container_name: lt-mariadb
+    ports:
+      - "3306:3306"
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: order_lt
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
