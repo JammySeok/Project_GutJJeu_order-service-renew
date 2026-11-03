@@ -1,10 +1,10 @@
 package jammy.orderrenew.StockTest;
 
-import jammy.orderrenew.exception.ErrorCode;
-import jammy.orderrenew.exception.OutOfStockException;
-import jammy.orderrenew.model.dto.ProductInfo;
-import jammy.orderrenew.model.dto.RemainStockInfo;
-import jammy.orderrenew.service.DeductStockService;
+import jammy.orderrenew.global.exception.BusinessException;
+import jammy.orderrenew.global.exception.ErrorCode;
+import jammy.orderrenew.domain.model.dto.ProductInfo;
+import jammy.orderrenew.domain.model.dto.RemainStockInfo;
+import jammy.orderrenew.domain.service.DeductStockService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -28,10 +28,10 @@ public class DbLockDeductStockService implements DeductStockService {
     @Transactional
     public Long decreaseStock(String optionCode, int quantity) {
         StockEntity stock = stockRepository.findByOptionCodeForUpdate(optionCode)
-                .orElseThrow(() -> new OutOfStockException(ErrorCode.OUT_OF_STOCK));
+                .orElseThrow(() -> new BusinessException(ErrorCode.OUT_OF_STOCK));
 
         if (stock.getStock() < quantity) {
-            throw new OutOfStockException(ErrorCode.OUT_OF_STOCK);
+            throw new BusinessException(ErrorCode.OUT_OF_STOCK);
         }
         stock.decrease(quantity);   // 변경 감지로 커밋 시 UPDATE
         return stock.getStock();

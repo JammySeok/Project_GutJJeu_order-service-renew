@@ -1,0 +1,25 @@
+package jammy.orderrenew.domain.service;
+
+import jakarta.validation.Valid;
+import jammy.orderrenew.domain.model.dto.UserInfo;
+import jammy.orderrenew.domain.model.dto.request.OrderReq;
+import jammy.orderrenew.domain.model.dto.response.OrderRes;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
+public interface OrderService {
+
+    OrderRes createOrder(Long userIdx, @Valid OrderReq request);
+    Page<OrderRes> findOrderList(Long userIdx, Pageable pageable);
+    OrderRes findOrder(Long userIdx, String orderCode);
+
+    void updateOrderStatus(String orderCode, String status);
+    Long findOrderIdx(String orderCode);
+
+    void orderSuccess(String orderCode, Long paymentIdx, UserInfo userInfo);
+    void orderFail(String orderCode);
+    void orderRefund(String orderCode, Long paymentIdx);
+
+    Long findOrderItemIdxByProduct(String productsCode);
+}
+    
