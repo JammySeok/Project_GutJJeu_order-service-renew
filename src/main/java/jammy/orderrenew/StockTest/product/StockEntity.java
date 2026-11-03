@@ -1,4 +1,4 @@
-package jammy.orderrenew.StockTest;
+package jammy.orderrenew.StockTest.product;
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -12,16 +12,21 @@ import lombok.NoArgsConstructor;
 
 @Getter
 @Entity
-@Table(name = "Test_Stock")
+@Table(name = "stock")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class StockEntity {
 
     @Id
-    @Column(name = "Option_Code")
+    @Column(name = "option_code")
     private String optionCode;
 
-    @Column(name = "Stock", nullable = false)
+    @Column(name = "stock", nullable = false)
     private Long stock;
+
+    public StockEntity(String optionCode, Long stock) {
+        this.optionCode = optionCode;
+        this.stock = stock;
+    }
 
     public void decrease(int quantity) {
         this.stock -= quantity;

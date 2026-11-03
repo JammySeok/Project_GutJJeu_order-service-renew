@@ -1,4 +1,4 @@
-package jammy.orderrenew.StockTest;
+package jammy.orderrenew.StockTest.product;
 
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;

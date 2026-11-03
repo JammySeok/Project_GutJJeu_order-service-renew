@@ -1,5 +1,7 @@
 package jammy.orderrenew.StockTest;
 
+import jammy.orderrenew.StockTest.product.StockEntity;
+import jammy.orderrenew.StockTest.product.StockJpaRepository;
 import jammy.orderrenew.global.exception.BusinessException;
 import jammy.orderrenew.global.exception.ErrorCode;
 import jammy.orderrenew.domain.model.dto.ProductInfo;
@@ -16,6 +18,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+// 부하 테스트용 어노테이션
 @ConditionalOnProperty(name = "custom.stock.strategy", havingValue = "db-lock")
 public class DbLockDeductStockService implements DeductStockService {
 
