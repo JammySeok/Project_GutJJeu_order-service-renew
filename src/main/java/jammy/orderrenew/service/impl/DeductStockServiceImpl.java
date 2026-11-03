@@ -14,13 +14,13 @@ import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
+// 부하 테스트용 어노테이션
 @ConditionalOnProperty(name = "custom.stock.strategy", havingValue = "redis", matchIfMissing = true)
 public class DeductStockServiceImpl implements DeductStockService {
 
@@ -28,11 +28,7 @@ public class DeductStockServiceImpl implements DeductStockService {
     private final static String STOCK_KEY = "product:stock:";
 
     /*
-     * Lua Script 정의
-     * Redis는 싱글 스레드로 동작하므로, Lua Script 내부의 로직은 원자적(Atomic)으로 실행
-     * 즉, 재고 조회와 차감 사이에 다른 스레드가 끼어들 수 없음 (동시성 문재 해결)
-     *
-     * 로직:
+     * 단일 차감 로직:
      * 1. 현재 재고 조회 (KEYS[1])
      * 2. 재고가 없으면(nil) -1 반환
      * 3. 현재 재고 >= 요청 수량(ARGV[1]) 이면 차감 수행 후 남은 재고 반환
@@ -47,8 +43,27 @@ public class DeductStockServiceImpl implements DeductStockService {
                     "    return -1 " +
                     "end";
 
+    /*
+     * 다중 차감 로직:
+     * 1. 모든 상품의 재고를 먼저 검증 → 하나라도 부족하면 {-1, 순번} 반환 (차감 없음)
+     * 2. 전부 통과하면 일괄 차감 후 남은 재고 배열 반환
+     */
+    private static final String DECREASE_STOCKS_SCRIPT =
+            "for i = 1, #KEYS do " +
+                    "    local stock = tonumber(redis.call('GET', KEYS[i])) " +
+                    "    if stock == nil or stock < tonumber(ARGV[i]) then " +
+                    "        return {-1, i} " +
+                    "    end " +
+                    "end " +
+                    "local remains = {} " +
+                    "for i = 1, #KEYS do " +
+                    "    remains[i] = redis.call('DECRBY', KEYS[i], ARGV[i]) " +
+                    "end " +
+                    "return remains";
+
     // 스크립트 실행 객체 (싱글톤으로 관리하여 성능 최적화)
     private DefaultRedisScript<Long> redisScript;
+    private DefaultRedisScript<List> redisScripts;
 
     /*
      * 빈 생성 시 Lua Script 초기화
@@ -56,18 +71,21 @@ public class DeductStockServiceImpl implements DeductStockService {
      */
     @PostConstruct
     public void init() {
-        // Redis에서 사용할 스크립트 객체 생성
+        // 단건 차감 스크립트
         redisScript = new DefaultRedisScript<>();
-        // 실행할 Lua 스크립트 설정
         redisScript.setScriptText(DECREASE_STOCK_SCRIPT);
-        // Lua 스크립트 실행 후 반환되는 값의 타입 설정
         redisScript.setResultType(Long.class);
+
+        // 다건 차감 스크립트
+        redisScripts = new DefaultRedisScript<>();
+        redisScripts.setScriptText(DECREASE_STOCKS_SCRIPT);
+        redisScripts.setResultType(List.class);
 
         log.info("Redis Script Initialized");
     }
 
     /**
-     * Redis의 상품 재고 감소
+     * 단일 상품 재고 차감
      * @param optionCode: 주문한 상품 옵션 코드
      * @param quantity: 주문 개수
      */
@@ -76,10 +94,6 @@ public class DeductStockServiceImpl implements DeductStockService {
 
         // 재고 Key 세팅
         String key = STOCK_KEY + optionCode;
-
-//        DefaultRedisScript<Long> redisScript = new DefaultRedisScript<>();
-//        redisScript.setScriptText(DECREASE_STOCK_SCRIPT);
-//        redisScript.setResultType(Long.class);
 
         // execute()를 통해 스크립트 실행 (Key List, ARGV List 전달)
         Long stock = redisTemplate.execute(
@@ -99,12 +113,99 @@ public class DeductStockServiceImpl implements DeductStockService {
         return stock;
     }
 
-    /*
-     * 다중 상품 재고 차감 (장바구니)
+    /**
+     * 다중 상품 재고 차감 (장바구니) - Lua Script 버전
      * @param request: 주문한 상품들 정보
      */
     @Override
     public List<RemainStockInfo> decreaseStocks(List<ProductInfo> request) {
+
+        // 같은 옵션이 여러 번 들어온 경우 수량 합산 (합계 기준으로 검증하기 위함), 순서 유지
+        Map<String, Integer> merged = request.stream()
+                .collect(Collectors.toMap(
+                        ProductInfo::optionCode,
+                        ProductInfo::quantity,
+                        Integer::sum,
+                        LinkedHashMap::new
+                ));
+
+        // KEYS / ARGV 세팅 (순서 일치)
+        List<String> optionCodes = new ArrayList<>(merged.keySet());
+        List<String> keys = optionCodes.stream()
+                .map(code -> STOCK_KEY + code)
+                .toList();
+        Object[] quantities = merged.values().stream()
+                .map(String::valueOf)
+                .toArray();
+
+        // 스크립트 1회 실행
+        List<Long> result = redisTemplate.execute(redisScripts, keys, quantities);
+
+        // 알 수 없는 오류 (결과가 없을 일은 없음)
+        if (result == null || result.isEmpty()) {
+            throw new RuntimeException("재고 차감 스크립트 결과 없음");
+        }
+
+        // 재고 부족: {-1, 실패 순번(1부터 시작)} → 아무것도 차감되지 않은 상태
+        if (result.get(0) == -1L) {
+            String failedCode = optionCodes.get(result.get(1).intValue() - 1);
+            log.info("재고 부족, code: {}", failedCode);
+            throw new OutOfStockException(ErrorCode.OUT_OF_STOCK);
+        }
+
+        // 성공: 상품별 남은 재고 세팅 (남은 재고는 음수가 될 수 없으므로 -1과 구분됨)
+        List<RemainStockInfo> remainStock = new ArrayList<>();
+        for (int i = 0; i < optionCodes.size(); i++) {
+            remainStock.add(new RemainStockInfo(optionCodes.get(i), result.get(i)));
+        }
+
+        return remainStock;
+    }
+
+    /*
+     * 단일 상품 롤백 (결제 실패 시)
+     * @param optionCode: 상품 옵션 코드
+     * @param quantity: 상품 주문 개수
+     */
+    @Override
+    public void rollBackStock(String optionCode, int quantity) {
+        String key = STOCK_KEY + optionCode;
+        ValueOperations<String, String> ops = redisTemplate.opsForValue();
+        ops.increment(key, quantity);
+    }
+
+    /*
+     * 상품 리스트 롤백 (결제 실패 시)
+     * @param request: 주문 상품 정보
+     */
+    @Override
+    public void rollBackStocks(List<ProductInfo> request) {
+
+        log.error("결제 실패로 인한 재고 복구");
+
+        // redis에 저장된 상품 재고
+        ValueOperations<String, String> ops = redisTemplate.opsForValue();
+
+        try {
+            // 반복문 돌리면서 rollback
+            for (ProductInfo item : request) {
+                String key = STOCK_KEY + item.optionCode();
+                // 직접 increment
+                ops.increment(key, item.quantity());
+            }
+        } catch (RuntimeException rollback) {
+
+            // 만약 위의 try 작업중 한번더 터지면 정말 문제. 관리자가 직접 처리해야함
+            log.info("RollBack 중 오류. 관리자 호출 요망 (정말 심각함): {}", rollback.getMessage());
+        }
+    }
+
+
+    /**
+     * 아래 코드는 리뉴얼 전 코드입니다.
+     * -> 다중 상품 재고 차감 (장바구니) - DECR + 보상 롤백
+     */
+    public List<RemainStockInfo> decreaseStocksLegacy(List<ProductInfo> request) {
 
         // 상품 별 남은 재고량 저장 (return 용)
         List<RemainStockInfo> remainStock = new ArrayList<>();
@@ -169,43 +270,5 @@ public class DeductStockServiceImpl implements DeductStockService {
         }
 
         return remainStock;
-    }
-
-    /*
-     * 단일 상품 롤백 (결제 실패 시)
-     * @param optionCode: 상품 옵션 코드
-     * @param quantity: 상품 주문 개수
-     */
-    @Override
-    public void rollBackStock(String optionCode, int quantity) {
-        String key = STOCK_KEY + optionCode;
-        ValueOperations<String, String> ops = redisTemplate.opsForValue();
-        ops.increment(key, quantity);
-    }
-
-    /*
-     * 상품 리스트 롤백 (결제 실패 시)
-     * @param request: 주문 상품 정보
-     */
-    @Override
-    public void rollBackStocks(List<ProductInfo> request) {
-
-        log.error("결제 실패로 인한 재고 복구");
-
-        // redis에 저장된 상품 재고
-        ValueOperations<String, String> ops = redisTemplate.opsForValue();
-
-        try {
-            // 반복문 돌리면서 rollback
-            for (ProductInfo item : request) {
-                String key = STOCK_KEY + item.optionCode();
-                // 직접 increment
-                ops.increment(key, item.quantity());
-            }
-        } catch (RuntimeException rollback) {
-
-            // 만약 위의 try 작업중 한번더 터지면 정말 문제. 관리자가 직접 처리해야함
-            log.info("RollBack 중 오류. 관리자 호출 요망 (정말 심각함): {}", rollback.getMessage());
-        }
     }
 }
