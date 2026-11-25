@@ -36,7 +36,7 @@
 
 **주문**
 - 주문 생성 → 결제 → 결제 후처리 3단계 주문 흐름
-- Redis 재고 선차감으로 초과 판매 방지 (단건 Lua Script, 다건 DECR + 보상 롤백)
+- Redis 재고 선차감으로 초과 판매 방지 (단건 · 다건 Lua Script)
 - 판매자별 정산금을 Redis에 임시 저장 후 결제 성공 시 DB 저장
 - 결제 성공 시 Kafka로 상품 서비스에 재고 갱신 이벤트 발행 (커밋 이후 발행)
 
@@ -61,15 +61,25 @@
 | 테스트 환경 | `loadtest` 프로필에서 상품 서비스 대신 Stub 클라이언트를 사용하도록 구성, MariaDB는 Docker Compose로 실행 |
 | 부하 테스트 | DB 비관적 락 방식의 재고 차감을 비교용으로 추가하고, k6 스크립트와 결과를 `loadtest/`에 정리 |
 
+### 개선 내역
+| 날짜 | 구분 | 개선 내용 | 결과 | 상세 |
+|---|---|---|---|---|
+| 2026.11.03 | 주문 | 다건 주문 재고 차감을 상품별 DECR + 보상 롤백에서 하나의 Lua Script로 변경 | 상품 10개 주문 TPS 4,403 → 13,897 (약 3.2배), 초과 판매 0 유지 | [#1](https://github.com/JammySeok/Project_GutJJeu_order-service-renew/issues/1) · [#2](https://github.com/JammySeok/Project_GutJJeu_order-service-renew/issues/2) |
+| 2026.11.25 | 주문 | 결제 후처리 중복 호출 시 비관적 락으로 정산 중복 저장 방지 | 동시 10회 호출 시 정산 10건 → 1건 | [#3](https://github.com/JammySeok/Project_GutJJeu_order-service-renew/issues/3) · [#4](https://github.com/JammySeok/Project_GutJJeu_order-service-renew/issues/4) |
+
 ### 개선 예정
 - 주문
-  - [ ] 다건 주문 재고 차감을 하나의 Lua Script로 개선
+  - [x] 다건 주문 재고 차감을 하나의 Lua Script로 개선 [#1](https://github.com/JammySeok/Project_GutJJeu_order-service-renew/issues/1)
   - [ ] 결제 후처리(주문 서비스) 실패 시 재시도 및 실패 건 재처리
+    - [x] 중복 호출 시 정산 중복 저장 방지 (비관적 락) [#3](https://github.com/JammySeok/Project_GutJJeu_order-service-renew/issues/3)
+    - [ ] 결제 실패 처리 중복 호출 시 재고 중복 복구 방지
+    - [ ] 결제 후처리 실패 건 기록 및 재처리 스케줄러
   - [ ] Outbox 패턴으로 이벤트 발행 실패 · 유실 방지
 - 테스트
   - [ ] (JUnit5) 비즈니스 로직 테스트
-  - [ ] (k6) 다건 주문(장바구니)
-  - [ ] (k6) 다건 Lua 개선 전후 비교
+  - [x] (k6) 다건 주문(장바구니) [#2](https://github.com/JammySeok/Project_GutJJeu_order-service-renew/issues/2)
+  - [x] (k6) 다건 Lua 개선 전후 비교 [#2](https://github.com/JammySeok/Project_GutJJeu_order-service-renew/issues/2)
+  - [x] (k6) 결제 후처리 중복 호출 동시성 검증 [#4](https://github.com/JammySeok/Project_GutJJeu_order-service-renew/issues/4)
 - 대기열
   - [ ] 대기열 순번 조회를 폴링에서 SSE 기반 서버 푸시로 개선
   - [ ] 주문 대기열 입장을 자리가 빌 때 즉시 처리하는 이벤트 방식으로 개선
