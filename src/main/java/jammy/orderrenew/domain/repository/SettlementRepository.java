@@ -30,7 +30,7 @@ public interface SettlementRepository extends JpaRepository<SettlementHistoryEnt
             UPDATE SettlementHistoryEntity s
             SET s.type = :newType
             WHERE s.sellerIdx = :sellerIdx
-              AND s.type = jammy.orderrenew.model.vo.SettlementType.ORDERS_CONFIRMED
+              AND s.type = jammy.orderrenew.domain.model.enums.SettlementType.ORDERS_CONFIRMED
               AND s.del = false
               AND s.createdAt >= :startDate
               AND s.createdAt <= :endDate

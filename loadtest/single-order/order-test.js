@@ -11,18 +11,18 @@ const orderSuccess = new Counter('order_success');      // 201 주문 성공
 const orderSoldOut = new Counter('order_sold_out');     // 400 OUT_OF_STOCK (정상적인 품절)
 const orderError = new Counter('order_error');          // 그 외 (진짜 에러)
 
-// 201과 400(품절)은 "예상된 응답" → http_req_failed에 포함하지 않음
-http.setResponseCallback(http.expectedStatuses(201, 400));
+// 201과 409(품절)은 "예상된 응답" → http_req_failed에 포함하지 않음
+http.setResponseCallback(http.expectedStatuses(201, 409));
 
 const scenarios = {
-    // ① 정합성: 100명이 총 1,000건을 나눠서 최대한 빠르게 요청
+    // 정합성: 100명이 총 1,000건을 나눠서 최대한 빠르게 요청
     consistency: {
         executor: 'shared-iterations',
         vus: 100,
         iterations: 1000,
         maxDuration: '2m',
     },
-    // ② 성능: 100명이 30초 동안 쉬지 않고 요청
+    // 성능: 100명이 30초 동안 쉬지 않고 요청
     performance: {
         executor: 'constant-vus',
         vus: 100,
@@ -47,7 +47,7 @@ const params = {
 export default function () {
     const res = http.post(`${BASE_URL}/orders`, payload, params);
 
-    const soldOut = res.status === 400 && res.body && res.body.includes('OUT_OF_STOCK');
+    const soldOut = res.status === 409 && res.body && res.body.includes('OUT_OF_STOCK');
 
     if (res.status === 201) orderSuccess.add(1);
     else if (soldOut) orderSoldOut.add(1);

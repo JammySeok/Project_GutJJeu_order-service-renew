@@ -98,8 +98,8 @@ public class DeductStockServiceImpl implements DeductStockService {
         // execute()를 통해 스크립트 실행 (Key List, ARGV List 전달)
         Long stock = redisTemplate.execute(
                 redisScript,
-                Collections.singletonList(key),
-                String.valueOf(quantity)
+                Collections.singletonList(key),  // KEYS[1]
+                String.valueOf(quantity)  // ARGV[1]
         );
 
         // -1이면 재고 부족
@@ -139,7 +139,11 @@ public class DeductStockServiceImpl implements DeductStockService {
                 .toArray();
 
         // 스크립트 1회 실행
-        List<Long> result = redisTemplate.execute(redisScripts, keys, quantities);
+        List<Long> result = redisTemplate.execute(
+                redisScripts,
+                keys,
+                quantities
+        );
 
         // 알 수 없는 오류 (결과가 없을 일은 없음)
         if (result == null || result.isEmpty()) {

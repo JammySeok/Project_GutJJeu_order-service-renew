@@ -163,17 +163,13 @@ public class OrderServiceImpl implements OrderService {
             }
             orderItemRepository.saveAll(tempOrderItems);
 
-            /* ======================
-             * 정산 잘 적용되는지 로그
-             =======================*/
-            log.info("========== [정산 로그] 주문 생성 (Redis 저장 전) ==========");
-            log.info("OrderCode: {}", orderCode);
             sellerSettlementMap.forEach((sellerIdx, amount) ->
                     log.info(" - 판매자(SellerIdx): {}, 정산금: {}", sellerIdx, amount)
             );
-            log.info("==========================================================");
 
-            saveSettlementInfoToRedis(orderCode, sellerSettlementMap);
+            // 테스트 하기 위해 잠깐 주석
+            // todo. 주석 풀기
+//            saveSettlementInfoToRedis(orderCode, sellerSettlementMap);
         } catch (Exception e) {
             log.error("주문 저장 실패. 재고 롤백. orderCode={}", orderCode);
             deductStockService.rollBackStocks(stocksInfos);
@@ -221,7 +217,7 @@ public class OrderServiceImpl implements OrderService {
     public void orderSuccess(String orderCode, Long paymentIdx, UserInfo userInfo) {
 
         // 주문 엔티티 조회
-        OrderEntity orderEntity = orderRepository.findByOrderCode(orderCode)
+        OrderEntity orderEntity = orderRepository.findByOrderCodeWithLock(orderCode)
                 .orElseThrow(() -> new BusinessException(ErrorCode.ORDER_NOT_FOUND));
 
         if (orderEntity.getStatus() == OrderStatus.PAID) {

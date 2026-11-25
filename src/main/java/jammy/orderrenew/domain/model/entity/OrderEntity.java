@@ -39,7 +39,7 @@ public class OrderEntity {
     @Column(name = "Card_IDX")
     private Long cardIdx;
 
-    @Column(name = "Orders_Code")
+    @Column(name = "Orders_Code", unique = true)
     private String orderCode;
 
     @Column(name = "Recipient")
